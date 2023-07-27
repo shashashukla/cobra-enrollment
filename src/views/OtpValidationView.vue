@@ -1,9 +1,13 @@
 <template>
   <div>
     <h3 class="heading-title">Enter Verification Code</h3>
-    <p class="v-code-text">We have sent a verification code to</p>
+    <p
+      class="v-code-text"
+      v-if="isResponseValid"
+      v-html="otpResponseMessage"
+    ></p>
     <p class="email-text">
-      {{ userEmail() }}
+      {{ userEmail }}
       <router-link
         class="edit-email edit-pencil"
         :to="`/edit-email?ssn=${userSsn}&registrationCode=${userRegistration}`"
@@ -52,7 +56,7 @@
       <div
         class="float-left resend-code"
         :class="[resendTextEnable]"
-        @click="reverseCountdown()"
+        @click="resendCode()"
       >
         RESEND CODE
       </div>
@@ -68,24 +72,17 @@ import { required, maxLength, minLength, numeric } from "@vuelidate/validators";
 import { useVuelidate } from "@vuelidate/core";
 import moment from "moment";
 import AuthService from "@/services/authService";
-interface iUserData {
-  registrationCode: string;
-  ssn: string;
-  emailAddress: string;
-}
 
 export default defineComponent({
   name: "OtpValidationView",
+  created() {
+    this.sendOtp();
+  },
   setup() {
     return { v$: useVuelidate() };
   },
   data() {
     return {
-      user: {
-        registrationCode: "",
-        ssn: "",
-        emailAddress: "",
-      } as iUserData,
       verificationTxt: "",
       isFormInvalid: false,
       otpcode: "",
@@ -94,6 +91,11 @@ export default defineComponent({
       validationMsg:
         "You entered an incorrect code, Please try again or click RESEND CODE to click a new code.",
       isSubmitDisabled: false,
+      userRegistration: this.$route.query.registrationCode as string,
+      userSsn: this.$route.query.ssn as string,
+      userEmail: this.$route.query.emailAddress as string,
+      otpResponseMessage: "",
+      isResponseValid: false,
     };
   },
   validations() {
@@ -124,37 +126,27 @@ export default defineComponent({
         if (!this.countdown) clearInterval(stopCountdown);
       }, 1000);
     },
-    reverseCountdown(): void {
-      this.countdown = 59;
-      const stopCountdown = setInterval(() => {
-        this.countdown -= 1;
-        if (!this.countdown) clearInterval(stopCountdown);
-      }, 1000);
+    resendCode(): void {
+      const rsponseData = this.sendOtp().catch.length;
+      if (rsponseData > 0) {
+        this.countdown = 59;
+        const stopCountdown = setInterval(() => {
+          this.countdown -= 1;
+          if (!this.countdown) clearInterval(stopCountdown);
+        }, 1000);
+      }
     },
     buttonDesign(): string {
       const buttonStatus = this.v$.otpcode.$invalid;
       return buttonStatus == true ? "btn-secondary" : "btn-primary";
     },
-    userEmail(): any {
-      return this.$route.query.emailAddress;
-    },
-    userRegistration(): any {
-      return this.$route.query.registrationCode;
-    },
-    userSsn(): any {
-      return this.$route.query.ssn;
-    },
-    async otpVerification(): Promise<void> {
+    async sendOtp(): Promise<void> {
       this.submitted = true;
-      this.v$.$touch();
-      if (this.v$.$invalid) {
-        return;
-      }
       this.isSubmitDisabled = true;
       const params = {
-        registrationCode: this.userRegistration(),
-        ssn: this.userSsn(),
-        emailAddress: this.userEmail(),
+        registrationCode: this.userRegistration,
+        ssn: this.userSsn,
+        emailAddress: this.userEmail,
       };
       this.isSubmitDisabled = false;
       const result = await AuthService.emailVerification(params);
@@ -164,18 +156,19 @@ export default defineComponent({
       }
       if (result.data.response) {
         this.isFormInvalid = false;
+        this.isResponseValid = true;
+        this.otpResponseMessage = "We have sent a verification code to";
       } else if (result.data.error) {
         this.isFormInvalid = true;
         this.validationMsg =
           result.data.error +
           "If you believe this is incorrect, please click <a href='https://padmin.com/contact/' target='_blank'>Contact Us</a> to connect with P&A Group's Participant Support Center.";
-      } else {
-        this.isFormInvalid = true;
-        this.$router.push({
-          path: "/agreement",
-          query: params,
-        });
       }
+    },
+    async otpVerification(): Promise<void> {
+      this.submitted = true;
+      this.v$.$touch();
+      this.$router.push("/agreement");
     },
     async editEmailForm(): Promise<void> {
       this.$emit("editEmailId");

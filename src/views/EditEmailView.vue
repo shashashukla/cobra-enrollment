@@ -60,11 +60,6 @@ import { required, email } from "@vuelidate/validators";
 import { useVuelidate } from "@vuelidate/core";
 import ToolTip from "@/components/common/ToolTip.vue";
 import AuthService from "@/services/authService";
-interface iUserData {
-  registrationCode: string;
-  ssn: string;
-  emailAddress: string;
-}
 
 export default defineComponent({
   name: "EditEmailView",
@@ -76,11 +71,11 @@ export default defineComponent({
   },
   data() {
     return {
+      userRegistration: this.$route.query.registrationCode as string,
+      userSsn: this.$route.query.ssn as string,
       user: {
-        registrationCode: "",
-        ssn: "",
         emailAddress: "",
-      } as iUserData,
+      },
       verificationTxt: "",
       isFormInvalid: false,
       validationMsg: "",
@@ -102,22 +97,14 @@ export default defineComponent({
       const buttonStatus = this.v$.user.emailAddress.$invalid;
       return buttonStatus == true ? "btn-secondary" : "btn-primary";
     },
-    userRegistration(): any {
-      return this.$route.query.registrationCode
-        ? this.$route.query.registrationCode
-        : "";
-    },
-    userSsn(): any {
-      return this.$route.query.ssn ? this.$route.query.ssn : "";
-    },
     async verifyEmail(): Promise<void> {
       this.v$.$touch();
       if (this.v$.$invalid) {
         return;
       }
       const params = {
-        registrationCode: this.userRegistration(),
-        ssn: this.userSsn(),
+        registrationCode: this.userRegistration,
+        ssn: this.userSsn,
         emailAddress: this.user.emailAddress,
       };
       const result = await AuthService.emailVerification(params);
@@ -127,17 +114,15 @@ export default defineComponent({
       }
       if (result.data.response) {
         this.isFormInvalid = false;
+        this.$router.push({
+          path: "/otp-verification",
+          query: params,
+        });
       } else if (result.data.error) {
         this.isFormInvalid = true;
         this.validationMsg =
           result.data.error +
           "If you believe this is incorrect, please click <a href='https://padmin.com/contact/' target='_blank'>Contact Us</a> to connect with P&A Group's Participant Support Center.";
-      } else {
-        this.isFormInvalid = true;
-        this.$router.push({
-          path: "/otp-verification",
-          query: params,
-        });
       }
     },
   },
