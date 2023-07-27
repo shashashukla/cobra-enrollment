@@ -3,7 +3,7 @@
     <h3 class="heading-title">Enter Verification Code</h3>
     <p class="v-code-text">We have sent a verification code to</p>
     <p class="email-text">
-      {{ userEmail }}
+      {{ userEmail() }}
       <router-link
         class="edit-email edit-pencil"
         :to="`/edit-email?ssn=${userSsn}&registrationCode=${userRegistration}`"
@@ -12,6 +12,11 @@
       </router-link>
     </p>
     <form>
+      <div
+        class="alert alert-danger"
+        v-if="isFormInvalid"
+        v-html="validationMsg"
+      ></div>
       <div class="form-group mb-3">
         <label for="name" class="form-label">Code</label>
         <input
@@ -34,10 +39,10 @@
       <div class="form-group mt-4">
         <button
           type="button"
-          :disabled="v$.otpcode.$invalid"
+          :disabled="v$.otpcode.$invalid || isSubmitDisabled"
           class="btn w-100"
           :class="[buttonDesign()]"
-          @click="submitOtp"
+          @click="otpVerification"
         >
           VERIFY
         </button>
@@ -62,6 +67,12 @@ import { defineComponent } from "vue";
 import { required, maxLength, minLength, numeric } from "@vuelidate/validators";
 import { useVuelidate } from "@vuelidate/core";
 import moment from "moment";
+import AuthService from "@/services/authService";
+interface iUserData {
+  registrationCode: string;
+  ssn: string;
+  emailAddress: string;
+}
 
 export default defineComponent({
   name: "OtpValidationView",
@@ -70,11 +81,19 @@ export default defineComponent({
   },
   data() {
     return {
+      user: {
+        registrationCode: "",
+        ssn: "",
+        emailAddress: "",
+      } as iUserData,
+      verificationTxt: "",
+      isFormInvalid: false,
       otpcode: "",
       submitted: false,
       countdown: 59,
       validationMsg:
         "You entered an incorrect code, Please try again or click RESEND CODE to click a new code.",
+      isSubmitDisabled: false,
     };
   },
   validations() {
@@ -97,15 +116,6 @@ export default defineComponent({
     resendTextEnable(): string {
       return this.countdown ? "disabled" : "";
     },
-    userEmail(): any {
-      return this.$route.query.emailAddress;
-    },
-    userRegistration(): any {
-      return this.$route.query.registrationCode;
-    },
-    userSsn(): any {
-      return this.$route.query.ssn;
-    },
   },
   methods: {
     timerCountdowm(): void {
@@ -125,10 +135,47 @@ export default defineComponent({
       const buttonStatus = this.v$.otpcode.$invalid;
       return buttonStatus == true ? "btn-secondary" : "btn-primary";
     },
-    async submitOtp(): Promise<void> {
+    userEmail(): any {
+      return this.$route.query.emailAddress;
+    },
+    userRegistration(): any {
+      return this.$route.query.registrationCode;
+    },
+    userSsn(): any {
+      return this.$route.query.ssn;
+    },
+    async otpVerification(): Promise<void> {
       this.submitted = true;
       this.v$.$touch();
-      this.$router.push("/agreement");
+      if (this.v$.$invalid) {
+        return;
+      }
+      this.isSubmitDisabled = true;
+      const params = {
+        registrationCode: this.userRegistration(),
+        ssn: this.userSsn(),
+        emailAddress: this.userEmail(),
+      };
+      this.isSubmitDisabled = false;
+      const result = await AuthService.emailVerification(params);
+      if (result === undefined) {
+        this.isFormInvalid = true;
+        return;
+      }
+      if (result.data.response) {
+        this.isFormInvalid = false;
+      } else if (result.data.error) {
+        this.isFormInvalid = true;
+        this.validationMsg =
+          result.data.error +
+          "If you believe this is incorrect, please click <a href='https://padmin.com/contact/' target='_blank'>Contact Us</a> to connect with P&A Group's Participant Support Center.";
+      } else {
+        this.isFormInvalid = true;
+        this.$router.push({
+          path: "/agreement",
+          query: params,
+        });
+      }
     },
     async editEmailForm(): Promise<void> {
       this.$emit("editEmailId");
